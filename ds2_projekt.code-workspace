@@ -1,0 +1,118 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "editor.formatOnSave": true,
+    "editor.tabSize": 4,
+    "files.encoding": "utf8",
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "jupyter.notebookFileRoot": "${workspaceFolder}",
+    "[python]": {
+      "editor.defaultFormatter": "ms-python.autopep8"
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-python.python",
+      "ms-python.autopep8",
+      "ms-toolsai.jupyter",
+      "ms-toolsai.jupyter-keymap",
+      "redhat.vscode-yaml"
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Treniraj model",
+        "type": "python",
+        "request": "launch",
+        "program": "${workspaceFolder}/src/train.py",
+        "args": ["--config", "configs/training_config.json"],
+        "cwd": "${workspaceFolder}",
+        "console": "integratedTerminal"
+      },
+      {
+        "name": "Evaluiraj model",
+        "type": "python",
+        "request": "launch",
+        "program": "${workspaceFolder}/src/evaluate.py",
+        "args": [
+          "--model",    "models/best_model.pth",
+          "--manifest", "data/processed/test/manifest.csv",
+          "--config",   "configs/training_config.json"
+        ],
+        "cwd": "${workspaceFolder}",
+        "console": "integratedTerminal"
+      },
+      {
+        "name": "Pripremi podatke",
+        "type": "python",
+        "request": "launch",
+        "program": "${workspaceFolder}/src/normalize.py",
+        "args": [
+          "--input",     "data/raw/text",
+          "--output",    "data/processed/normalized",
+          "--verify"
+        ],
+        "cwd": "${workspaceFolder}",
+        "console": "integratedTerminal"
+      },
+      {
+        "name": "Debug (5 epoha)",
+        "type": "python",
+        "request": "launch",
+        "program": "${workspaceFolder}/src/train.py",
+        "args": ["--config", "configs/training_config.json", "--debug"],
+        "cwd": "${workspaceFolder}",
+        "console": "integratedTerminal"
+      }
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "1. Setup",
+        "type": "shell",
+        "command": "bash scripts/setup.sh",
+        "group": "build",
+        "presentation": {"reveal": "always", "panel": "shared"}
+      },
+      {
+        "label": "2. Pripremi podatke",
+        "type": "shell",
+        "command": "bash scripts/prepare_data.sh",
+        "group": "build",
+        "presentation": {"reveal": "always", "panel": "shared"}
+      },
+      {
+        "label": "3. Treniraj",
+        "type": "shell",
+        "command": "python src/train.py --config configs/training_config.json",
+        "group": {"kind": "build", "isDefault": true},
+        "presentation": {"reveal": "always", "panel": "shared"}
+      },
+      {
+        "label": "4. Evaluiraj",
+        "type": "shell",
+        "command": "python src/evaluate.py --model models/best_model.pth --manifest data/processed/test/manifest.csv",
+        "group": "test",
+        "presentation": {"reveal": "always", "panel": "shared"}
+      },
+      {
+        "label": "Cijeli pipeline",
+        "type": "shell",
+        "command": "bash scripts/run_all.sh",
+        "group": "build",
+        "presentation": {"reveal": "always", "panel": "shared"}
+      }
+    ]
+  }
+}

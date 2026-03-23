@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.env
+.DS_Store
+
+data/raw/audio/
+data/raw/text/
+results/
+*.pt
+*.pth
