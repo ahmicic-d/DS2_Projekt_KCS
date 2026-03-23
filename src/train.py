@@ -1,18 +1,3 @@
-"""
-train.py
---------
-Treniranje DeepSpeech2 modela za raspoznavanje hrvatskog govora.
-
-Pokretanje:
-    python src/train.py --config configs/training_config.json
-
-Opcije:
-    --config        Putanja do JSON konfig datoteke
-    --resume        Putanja do checkpointa (nastavak treniranja)
-    --device        cpu / cuda / mps (auto-detect ako nije navedeno)
-    --debug         Smanji dataset na 20 uzoraka za brzi test
-"""
-
 import os
 import json
 import time
@@ -34,9 +19,6 @@ from model   import DeepSpeech2, build_model
 from dataset import Alphabet, build_dataloaders
 from evaluate import compute_wer, compute_cer, greedy_decode
 
-# ──────────────────────────────────────────────────────────────────
-# Logging setup
-# ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -45,11 +27,6 @@ logging.basicConfig(
     ]
 )
 log = logging.getLogger(__name__)
-
-
-# ──────────────────────────────────────────────────────────────────
-# Trainer klasa
-# ──────────────────────────────────────────────────────────────────
 
 class Trainer:
     def __init__(self, config: dict, device: torch.device,
@@ -156,7 +133,6 @@ class Trainer:
             log.info(f"  *** Novi best model spreman! WER={wer:.2f}% ***")
 
     def _train_epoch(self, epoch: int) -> float:
-        """Jedna epoha treniranja. Vraća prosječni CTC gubitak."""
         self.model.train()
         total_loss = 0.0
         n_batches  = 0
@@ -172,9 +148,7 @@ class Trainer:
             # Forward
             log_probs = self.model(specs)  # (T, B, n_class)
 
-            # CTC gubitak
-            # input_lens se moraju skalirati prema CNN strideovanju
-            # stride=2 u CNN → T → T//2
+
             T_out = log_probs.shape[0]
             # Proporcionalno skaliraj duljine
             scaled_input_lens = torch.clamp(
@@ -206,9 +180,7 @@ class Trainer:
 
     @torch.no_grad()
     def _evaluate(self, loader, desc: str) -> tuple:
-        """
-        Evaluacija na skupu. Vraća (avg_loss, WER%, CER%).
-        """
+
         self.model.eval()
         total_loss    = 0.0
         n_batches     = 0
@@ -250,7 +222,7 @@ class Trainer:
         return avg_loss, wer, cer
 
     def train(self) -> None:
-        """Glavni loop treniranja."""
+
         epochs    = self.config["training"]["epochs"]
         patience  = self.config["training"].get("early_stopping_patience", 15)
         no_improve = 0
@@ -330,11 +302,6 @@ class Trainer:
         with open(results_path, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
         log.info(f"Rezultati spremljeni: {results_path}")
-
-
-# ──────────────────────────────────────────────────────────────────
-# CLI
-# ──────────────────────────────────────────────────────────────────
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Treniranje DeepSpeech2")

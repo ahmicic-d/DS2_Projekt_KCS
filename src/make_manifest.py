@@ -1,23 +1,3 @@
-"""
-make_manifest.py
-----------------
-Kreira CSV manifeste za DeepSpeech2 treniranje.
-
-CSV format (jedan redak = jedna snimka):
-    wav_filepath, wav_filesize, duration, transcript
-
-Dijeli podatke na:
-    train (80%), dev (10%), test (10%)
-
-Pokretanje:
-    python src/make_manifest.py \
-        --audio_dir  data/raw/audio \
-        --text_dir   data/processed/normalized \
-        --output_dir data/processed \
-        --train_ratio 0.8 \
-        --dev_ratio   0.1
-"""
-
 import os
 import csv
 import wave
@@ -32,13 +12,8 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-
-# ──────────────────────────────────────────────────────────────────
-# Pomoćne funkcije
-# ──────────────────────────────────────────────────────────────────
-
 def get_wav_info(wav_path: str) -> tuple:
-    """Vrati (trajanje_sekundi, velicina_bajtova) za WAV datoteku."""
+
     size = os.path.getsize(wav_path)
     try:
         with wave.open(wav_path, "r") as wf:
@@ -53,13 +28,7 @@ def get_wav_info(wav_path: str) -> tuple:
 
 def load_pairs(audio_dir: str, text_dir: str,
                min_dur: float = 0.5, max_dur: float = 20.0) -> list:
-    """
-    Učitaj parove (wav_path, transcript) koji imaju obje datoteke.
-    Filtrira snimke prema trajanju.
 
-    Vraća listu rječnika:
-        {'wav_path', 'size', 'duration', 'transcript', 'stem'}
-    """
     audio_path = Path(audio_dir)
     text_path  = Path(text_dir)
 
@@ -86,16 +55,13 @@ def load_pairs(audio_dir: str, text_dir: str,
         wav_file = str(wav_stems[stem])
         txt_file = txt_stems[stem]
 
-        # Čitaj transkript
         transcript = txt_file.read_text(encoding="utf-8").strip()
         if not transcript:
             skipped_empty += 1
             continue
 
-        # Info o WAV
         duration, size = get_wav_info(wav_file)
 
-        # Filtriraj po trajanju
         if duration < min_dur or duration > max_dur:
             log.debug(f"  Preskačem {stem}: trajanje={duration:.2f}s")
             skipped_duration += 1
@@ -119,10 +85,7 @@ def load_pairs(audio_dir: str, text_dir: str,
 
 def split_data(pairs: list, train_ratio: float = 0.8,
                dev_ratio: float = 0.1, seed: int = 42) -> tuple:
-    """
-    Podijeli parove na train / dev / test.
-    Vraća (train_list, dev_list, test_list).
-    """
+
     random.seed(seed)
     shuffled = pairs.copy()
     random.shuffle(shuffled)
@@ -140,7 +103,7 @@ def split_data(pairs: list, train_ratio: float = 0.8,
 
 
 def write_manifest(pairs: list, output_path: str) -> None:
-    """Spremi listu parova u CSV manifest."""
+
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
@@ -159,7 +122,7 @@ def write_manifest(pairs: list, output_path: str) -> None:
 
 
 def print_stats(pairs: list, name: str) -> None:
-    """Ispiši statistiku skupa."""
+
     if not pairs:
         return
     durations = [p["duration"] for p in pairs]
@@ -173,10 +136,6 @@ def print_stats(pairs: list, name: str) -> None:
     print(f"    Min / Max:        {min(durations):.2f}s / {max(durations):.2f}s")
     print(f"    Avg br. riječi:   {sum(words)/len(words):.1f}")
 
-
-# ──────────────────────────────────────────────────────────────────
-# CLI
-# ──────────────────────────────────────────────────────────────────
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -202,7 +161,6 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    # Učitaj parove
     pairs = load_pairs(
         args.audio_dir, args.text_dir,
         min_dur=args.min_dur, max_dur=args.max_dur
@@ -212,7 +170,6 @@ if __name__ == "__main__":
         print("GREŠKA: Nema valjanih parova! Provjeri putanje i datoteke.")
         exit(1)
 
-    # Podijeli
     train, dev, test = split_data(
         pairs,
         train_ratio=args.train_ratio,
@@ -220,13 +177,11 @@ if __name__ == "__main__":
         seed=args.seed
     )
 
-    # Spremi manifeste
     out = Path(args.output_dir)
     write_manifest(train, str(out / "train" / "manifest.csv"))
     write_manifest(dev,   str(out / "dev"   / "manifest.csv"))
     write_manifest(test,  str(out / "test"  / "manifest.csv"))
 
-    # Statistika
     print(f"\n{'='*55}")
     print("Statistika skupova podataka:")
     print_stats(train, "TRAIN")

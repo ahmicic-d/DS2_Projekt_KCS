@@ -39,9 +39,6 @@ ds2_projekt/
 ├── requirements.txt
 └── README.md
 ```
-
----
-
 ## Ovisnosti
 
 - Python 3.8+
@@ -52,3 +49,7 @@ ds2_projekt/
 - librosa, soundfile (audio processing)
 - pandas, numpy
 - tqdm, matplotlib
+
+Detaljno: `requirements.txt`
+
+

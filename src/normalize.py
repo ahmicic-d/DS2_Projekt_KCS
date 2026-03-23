@@ -1,20 +1,3 @@
-"""
-normalize.py
-------------
-Normalizacija transkripata iz ISO-8859-2 kodne stranice u UTF-8.
-
-Rješava problem ASCII supstitucija za hrvatska slova:
-    {  →  š
-    ~  →  č
-    `  →  ž
-    ^  →  đ
-    d` →  dž
-    <sil>, <ah>, <eee> ... → uklonjeno ili zamijenjeno
-
-Pokretanje:
-    python src/normalize.py --input data/raw/text --output data/processed/normalized
-"""
-
 import os
 import re
 import argparse
@@ -27,20 +10,16 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ──────────────────────────────────────────────────────────────────
-# Mapa: ASCII supstitucija → ispravni UTF-8 znak
-# VAŽNO: 'd`' mora biti prije '`' u zamjeni!
-# ──────────────────────────────────────────────────────────────────
 ASCII_MAP = {
-    "d`": "dž",   # dvostruki znak — mora biti prvi!
+    "d`": "dž",   
     "{":  "š",
     "~":  "č",
     "`":  "ž",
-    "^":  "ć",    # ISPRAVNO: ^ = ć (fonem: cc), ne đ!
-    "}":  "đ",    # ISPRAVNO: } = đ (fonem: dz)
+    "^":  "ć",    
+    "}":  "đ",    
 }
 
-# Posebni tokeni koji se uklanjaju
+
 NOISE_TOKENS = re.compile(
     r"<sil>|<[a-z]+>|\[[a-z]+\]|{[a-z]+}",
     re.IGNORECASE
@@ -48,34 +27,22 @@ NOISE_TOKENS = re.compile(
 
 
 def normalize_transcript(raw: str) -> str:
-    """
-    Pretvori jedan sirovi transkript u normaliziran UTF-8 string.
-
-    Koraci:
-    1. Ukloni specijalne tokene (<sil>, <ah> itd.)
-    2. Zamijeni ASCII supstitucije s ispravnim slovima:
-         d` → dž  |  { → š  |  ~ → č  |  ` → ž  |  ^ → ć  |  } → đ
-    3. Pretvori u mala slova
-    4. Ukloni višestruke razmake
-    5. Trim
-    """
     text = raw.strip()
 
-    # 1. Ukloni noise tokene
+    # Ukloni noise tokene
     text = NOISE_TOKENS.sub(" ", text)
 
-    # 2. Zamijeni ASCII supstitucije (d` mora biti prije `)
+    # Zamijeni ASCII supstitucije
     for ascii_sub, correct in ASCII_MAP.items():
         text = text.replace(ascii_sub, correct)
 
-    # 3. Mala slova
+    # Mala slova
     text = text.lower()
 
-    # 4. Normalizacija razmaka
+    # Normalizacija razmaka
     text = re.sub(r"\s+", " ", text).strip()
 
     # 5. Ukloni znakove koji nisu slova, apostrof, razmak
-    #    (ali zadrži sva hrvatska slova)
     allowed = re.compile(
         r"[^a-zšđčćžabcčćdđefghijklmnoprsštuvzž' ]",
         re.UNICODE
@@ -88,12 +55,7 @@ def normalize_transcript(raw: str) -> str:
 
 def normalize_directory(input_dir: str, output_dir: str,
                          encoding: str = "iso-8859-2") -> dict:
-    """
-    Normalizira sve .txt datoteke u mapi input_dir i
-    sprema rezultate u output_dir (UTF-8).
 
-    Vraća: {'ok': int, 'empty': int, 'error': int}
-    """
     input_path  = Path(input_dir)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -111,7 +73,6 @@ def normalize_directory(input_dir: str, output_dir: str,
         try:
             raw = fpath.read_text(encoding=encoding).strip()
         except UnicodeDecodeError:
-            # Pokušaj UTF-8 ako ISO-8859-2 ne radi
             try:
                 raw = fpath.read_text(encoding="utf-8").strip()
             except Exception as e:
@@ -128,7 +89,6 @@ def normalize_directory(input_dir: str, output_dir: str,
         if not normalized:
             log.debug(f"  Prazan transkript: {fpath.name} (raw: {repr(raw)})")
             stats["empty"] += 1
-            # Spremi praznu datoteku da bismo mogli pratiti koji su prazni
             out_file = output_path / fpath.name
             out_file.write_text("", encoding="utf-8")
             continue
@@ -145,11 +105,7 @@ def normalize_directory(input_dir: str, output_dir: str,
 
 
 def verify_charset(normalized_dir: str, alphabet_path: str) -> list:
-    """
-    Provjeri koriste li normalizirani transkripti samo znakove
-    koji se nalaze u alphabet_hr.txt. Vrati listu nepoznatih znakova.
-    """
-    # Učitaj abecedu
+
     with open(alphabet_path, encoding="utf-8") as f:
         alphabet = set(f.read())
     alphabet.discard("\n")
@@ -170,10 +126,6 @@ def verify_charset(normalized_dir: str, alphabet_path: str) -> list:
 
     return list(unknown.keys())
 
-
-# ──────────────────────────────────────────────────────────────────
-# CLI
-# ──────────────────────────────────────────────────────────────────
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Normalizacija transkripata iz ISO-8859-2 u UTF-8"

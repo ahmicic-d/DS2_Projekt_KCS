@@ -1,20 +1,3 @@
-"""
-transcribe.py
--------------
-Transkripcija jedne ili više WAV datoteka naučenim modelom.
-
-Pokretanje:
-    # Jedna datoteka:
-    python src/transcribe.py --model models/best_model.pth --audio snimka.wav
-
-    # Više datoteka:
-    python src/transcribe.py --model models/best_model.pth --audio *.wav
-
-    # Uz beam search:
-    python src/transcribe.py --model models/best_model.pth --audio snimka.wav \
-        --beam_search --beam_width 50
-"""
-
 import json
 import logging
 import argparse

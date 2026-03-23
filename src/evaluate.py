@@ -1,21 +1,3 @@
-"""
-evaluate.py
------------
-Evaluacija naučenog DeepSpeech2 modela.
-
-Izračunava:
-    WER  — Word Error Rate  (standardna mjera za ASR)
-    CER  — Character Error Rate (bolja za morfološki bogate jezike)
-
-Ispisuje greške po uzorku i agregirane statistike.
-
-Pokretanje:
-    python src/evaluate.py \
-        --model  models/best_model.pth \
-        --manifest data/processed/test/manifest.csv \
-        --config configs/training_config.json
-"""
-
 import csv
 import json
 import logging
@@ -40,20 +22,12 @@ logging.basicConfig(
 )
 
 
-# ──────────────────────────────────────────────────────────────────
-# Metrike: WER i CER (Levenshteinova udaljenost)
-# ──────────────────────────────────────────────────────────────────
-
 def levenshtein(seq1: list, seq2: list) -> int:
-    """
-    Izračunaj Levenshteinovu editnu udaljenost između dva niza.
-    Radi na listama tokena (za WER) ili listama znakova (za CER).
-    """
+
     n, m = len(seq1), len(seq2)
     if n == 0: return m
     if m == 0: return n
 
-    # Optimizacija memorije: samo dva retka
     prev = list(range(m + 1))
     curr = [0] * (m + 1)
 
@@ -63,19 +37,16 @@ def levenshtein(seq1: list, seq2: list) -> int:
             if seq1[i - 1] == seq2[j - 1]:
                 curr[j] = prev[j - 1]
             else:
-                curr[j] = 1 + min(prev[j],    # brisanje
-                                   curr[j - 1], # umetanje
-                                   prev[j - 1]) # supstitucija
+                curr[j] = 1 + min(prev[j],    
+                                   curr[j - 1],
+                                   prev[j - 1]) 
         prev, curr = curr, prev
 
     return prev[m]
 
 
 def compute_wer(references: list, hypotheses: list) -> float:
-    """
-    Izračunaj prosječni WER za liste referenci i hipoteza.
-    WER = (S + D + I) / N × 100%
-    """
+
     total_dist = 0
     total_words = 0
     for ref, hyp in zip(references, hypotheses):
@@ -90,10 +61,7 @@ def compute_wer(references: list, hypotheses: list) -> float:
 
 
 def compute_cer(references: list, hypotheses: list) -> float:
-    """
-    Izračunaj prosječni CER za liste referenci i hipoteza.
-    CER = Levenshtein(ref_chars, hyp_chars) / len(ref_chars) × 100%
-    """
+
     total_dist  = 0
     total_chars = 0
     for ref, hyp in zip(references, hypotheses):
@@ -108,29 +76,19 @@ def compute_cer(references: list, hypotheses: list) -> float:
 
 
 def greedy_decode(log_probs: torch.Tensor, alphabet: Alphabet) -> str:
-    """
-    CTC greedy dekodiranje: argmax po svakom vremenskom okviru,
-    zatim ukloni uzastopne duplikate i blank tokene.
 
-    log_probs: (T, n_class) — log-softmax izlaz modela za jednu snimku
-    """
     indices = torch.argmax(log_probs, dim=-1).tolist()  # (T,)
     return alphabet.decode(indices, remove_duplicates=True)
 
 
 def beam_search_decode(log_probs: torch.Tensor, alphabet: Alphabet,
                         beam_width: int = 10) -> str:
-    """
-    Jednostavni CTC beam search dekoder (bez jezičnog modela).
-    Za produkciju preporučiti: ctcdecode / pyctcdecode biblioteke.
 
-    log_probs: (T, n_class)
-    """
-    # Inicijalizacija: beam je lista (prefix, log_prob_accumulated)
+
     blank = Alphabet.BLANK_IDX
     T = log_probs.shape[0]
 
-    # Format: {prefix_tuple: log_prob}
+
     beams = {(): 0.0}
 
     for t in range(T):
@@ -146,17 +104,17 @@ def beam_search_decode(log_probs: torch.Tensor, alphabet: Alphabet,
                 log_p = math.log(prob + 1e-30)
 
                 if c == blank:
-                    # Blank: zadrži prefix
+
                     new_prefix = prefix
                 elif prefix and prefix[-1] == c:
-                    # Isti znak: ne dodaj (CTC collapse)
+
                     new_prefix = prefix
                 else:
                     new_prefix = prefix + (c,)
 
                 score = prefix_score + log_p
                 if new_prefix in new_beams:
-                    # Log-sum-exp merge
+
                     import math
                     m = max(new_beams[new_prefix], score)
                     new_beams[new_prefix] = m + math.log(
@@ -165,16 +123,11 @@ def beam_search_decode(log_probs: torch.Tensor, alphabet: Alphabet,
                 else:
                     new_beams[new_prefix] = score
 
-        # Zadrži top-K beamova
         beams = dict(sorted(new_beams.items(), key=lambda x: -x[1])[:beam_width])
 
     best_prefix = max(beams, key=beams.get)
     return alphabet.decode(list(best_prefix), remove_duplicates=False)
 
-
-# ──────────────────────────────────────────────────────────────────
-# Evaluator
-# ──────────────────────────────────────────────────────────────────
 
 class Evaluator:
     def __init__(self, model_path: str, config: dict, device: torch.device):
@@ -182,7 +135,6 @@ class Evaluator:
         self.config   = config
         self.alphabet = Alphabet(config["data"]["alphabet"])
 
-        # Učitaj model
         ckpt = torch.load(model_path, map_location=device)
         config["model"]["n_class"] = len(self.alphabet)
         self.model = build_model(config).to(device)
@@ -190,7 +142,6 @@ class Evaluator:
         self.model.eval()
         log.info(f"Model učitan: {model_path}")
 
-        # Audio preprocessing
         audio_cfg = config["audio"]
         sr = audio_cfg["sample_rate"]
         wl = int(sr * audio_cfg["win_length_ms"] / 1000)
@@ -210,10 +161,7 @@ class Evaluator:
     @torch.no_grad()
     def evaluate_manifest(self, manifest_path: str,
                            output_csv: str = None) -> dict:
-        """
-        Evaluiraj model na svim uzorcima iz manifesta.
-        Ispiši rezultate i opcijski spremi u CSV.
-        """
+
         dataset = SpeechDataset(
             manifest_path, self.alphabet,
             sample_rate=self.config["audio"]["sample_rate"],
@@ -232,7 +180,7 @@ class Evaluator:
         print(f"Evaluacija: {manifest_path}")
         print(f"{'='*70}")
 
-        # Učitaj filenames iz manifesta za prikaz
+
         with open(manifest_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             fnames = [Path(row["wav_filepath"]).stem for row in reader]
@@ -264,7 +212,7 @@ class Evaluator:
                 filenames.append(fname)
                 idx += 1
 
-        # Per-uzorak statistike
+
         print(f"\n{'Datoteka':<25} {'Referenca':<35} {'Hipoteza':<35} {'WER%':>6}")
         print("-" * 103)
 
@@ -279,7 +227,6 @@ class Evaluator:
             flag = "✓" if w == 0 else "✗"
             print(f"{fname:<25} {ref:<35} {hyp:<35} {w:>5.1f}% {flag}")
 
-        # Agregirane metrike
         wer = compute_wer(refs, hyps)
         cer = compute_cer(refs, hyps)
         n_correct = sum(1 for r, h in zip(refs, hyps) if r == h)
@@ -291,7 +238,7 @@ class Evaluator:
         print(f"CER (agregirani):   {cer:.2f}%")
         print(f"{'='*70}")
 
-        # Spremi CSV s rezultatima
+
         if output_csv:
             Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
             with open(output_csv, "w", newline="", encoding="utf-8") as f:
@@ -329,11 +276,6 @@ class Evaluator:
             return beam_search_decode(log_probs, self.alphabet, beam_width)
         else:
             return greedy_decode(log_probs, self.alphabet)
-
-
-# ──────────────────────────────────────────────────────────────────
-# CLI
-# ──────────────────────────────────────────────────────────────────
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluacija DeepSpeech2 modela")

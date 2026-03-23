@@ -1,12 +1,3 @@
-"""
-dataset.py
-----------
-PyTorch Dataset i DataLoader za DeepSpeech2 treniranje.
-
-Učitava CSV manifest (wav_filepath, duration, transcript),
-pretvara WAV u Log-Mel spektrogram i enkodira transkript u indekse.
-"""
-
 import csv
 import logging
 from pathlib import Path
@@ -20,22 +11,14 @@ from torch.nn.utils.rnn import pad_sequence
 log = logging.getLogger(__name__)
 
 
-# ──────────────────────────────────────────────────────────────────
-# Alphabet — mapiranje znakova ↔ indeksi
-# ──────────────────────────────────────────────────────────────────
-
 class Alphabet:
-    """
-    Mapira znakove abecede na integer indekse i obratno.
-    Indeks 0 je rezerviran za CTC blank token.
-    """
+
     BLANK_IDX = 0
 
     def __init__(self, alphabet_path: str):
         with open(alphabet_path, encoding="utf-8") as f:
             chars = [line.rstrip("\n") for line in f if line.rstrip("\n")]
 
-        # Ukloni duplikate, zadrži redoslijed
         seen = set()
         unique_chars = []
         for ch in chars:
@@ -43,7 +26,6 @@ class Alphabet:
                 seen.add(ch)
                 unique_chars.append(ch)
 
-        # Indeks 0 = blank (CTC), znakovi od 1 nadalje
         self._char_to_idx = {ch: i + 1 for i, ch in enumerate(unique_chars)}
         self._idx_to_char = {i + 1: ch for i, ch in enumerate(unique_chars)}
         self._idx_to_char[self.BLANK_IDX] = ""  # blank → prazan string
@@ -54,7 +36,7 @@ class Alphabet:
         )
 
     def encode(self, text: str) -> list:
-        """Pretvori string u listu indeksa. Nepoznate znakove preskoči."""
+
         return [
             self._char_to_idx[ch]
             for ch in text
@@ -62,13 +44,9 @@ class Alphabet:
         ]
 
     def decode(self, indices: list, remove_duplicates: bool = True) -> str:
-        """
-        Pretvori listu indeksa u string.
-        remove_duplicates: ukloni uzastopne ponavljajuće znakove
-        (CTC greedy dekodiranje).
-        """
+
         if remove_duplicates:
-            # Ukloni uzastopne duplikate, zatim blank
+
             result = []
             prev = None
             for idx in indices:
@@ -87,20 +65,7 @@ class Alphabet:
         return len(self._char_to_idx) + 1  # +1 za blank
 
 
-# ──────────────────────────────────────────────────────────────────
-# Dataset
-# ──────────────────────────────────────────────────────────────────
-
 class SpeechDataset(Dataset):
-    """
-    Dataset koji učitava parove (audio, transkript) iz CSV manifesta.
-
-    Svaki uzorak:
-        spectrogram : Tensor (1, n_mels, T)  — Log-Mel spektrogram
-        label       : Tensor (L,)            — enkodiran transkript
-        input_len   : int                    — broj vremenskih okvira
-        label_len   : int                    — duljina transkripta
-    """
 
     def __init__(self, manifest_path: str, alphabet: Alphabet,
                  sample_rate: int = 16000,
@@ -115,7 +80,6 @@ class SpeechDataset(Dataset):
         self.sample_rate  = sample_rate
         self.augment      = augment
 
-        # Izgradi audio → spektrogram pipeline
         win_length = int(sample_rate * win_length_ms / 1000)
         hop_length = int(sample_rate * hop_length_ms / 1000)
 
@@ -130,7 +94,6 @@ class SpeechDataset(Dataset):
             T.AmplitudeToDB(),
         )
 
-        # SpecAugment (samo za train)
         if augment and aug_config:
             self.spec_augment = torch.nn.Sequential(
                 T.FrequencyMasking(aug_config.get("freq_mask_max", 15)),
@@ -139,7 +102,6 @@ class SpeechDataset(Dataset):
         else:
             self.spec_augment = None
 
-        # Učitaj manifest
         self.samples = self._load_manifest(manifest_path)
         log.info(
             f"Dataset učitan: {manifest_path} "
@@ -170,26 +132,24 @@ class SpeechDataset(Dataset):
         """Učitaj WAV i vrati mono waveform na ispravnom sample ratu."""
         waveform, sr = torchaudio.load(wav_path)
 
-        # Stereo → mono
         if waveform.shape[0] > 1:
             waveform = waveform.mean(dim=0, keepdim=True)
 
-        # Resample ako se razlikuje od ciljnog sample rata
         if sr != self.sample_rate:
             resampler = T.Resample(sr, self.sample_rate)
             waveform  = resampler(waveform)
 
-        return waveform  # (1, samples)
+        return waveform  
 
     def _audio_to_spectrogram(self, waveform: torch.Tensor) -> torch.Tensor:
-        """Pretvori waveform u normalizirani Log-Mel spektrogram."""
-        spec = self.mel_transform(waveform)  # (1, n_mels, T)
 
-        # Augmentacija (samo train)
+        spec = self.mel_transform(waveform)  
+
+
         if self.spec_augment is not None:
             spec = self.spec_augment(spec)
 
-        # Normalizacija po snimci (zero-mean, unit-variance)
+
         mean = spec.mean()
         std  = spec.std().clamp(min=1e-9)
         spec = (spec - mean) / std
@@ -210,26 +170,11 @@ class SpeechDataset(Dataset):
         return spec, label, spec.shape[-1], len(label)
 
 
-# ──────────────────────────────────────────────────────────────────
-# Collate funkcija — padding unutar batch-a
-# ──────────────────────────────────────────────────────────────────
-
 def collate_fn(batch):
-    """
-    Grupira uzorke različitih duljina u batch.
-    Spektrogrami se paddaju do najduljeg u batchu.
-    Labele se paddaju nulama (blank token).
 
-    Vraća:
-        spectrograms : (B, 1, n_mels, T_max)
-        labels       : (B, L_max)
-        input_lens   : (B,)  — stvarne duljine spektrograma (T)
-        label_lens   : (B,)  — stvarne duljine labela (L)
-    """
     specs, labels, input_lens, label_lens = zip(*batch)
 
-    # Pad spektrogrami po vremenskoj osi (dim=2)
-    # spec: (1, n_mels, T) → paddamo T
+
     max_T = max(s.shape[-1] for s in specs)
     padded_specs = []
     for s in specs:
@@ -238,7 +183,6 @@ def collate_fn(batch):
         padded_specs.append(padded)
     spectrograms = torch.stack(padded_specs)  # (B, 1, n_mels, T_max)
 
-    # Pad labele
     labels_padded = pad_sequence(
         [l for l in labels],
         batch_first=True, padding_value=0
@@ -250,15 +194,8 @@ def collate_fn(batch):
     return spectrograms, labels_padded, input_lens, label_lens
 
 
-# ──────────────────────────────────────────────────────────────────
-# Factory funkcija
-# ──────────────────────────────────────────────────────────────────
-
 def build_dataloaders(config: dict, alphabet: Alphabet) -> tuple:
-    """
-    Izgradi DataLoadere za train/dev/test iz konfig rječnika.
-    Vraća (train_loader, dev_loader, test_loader).
-    """
+
     audio_cfg = config["audio"]
     data_cfg  = config["data"]
     aug_cfg   = config.get("augmentation", {})
